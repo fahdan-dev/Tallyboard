@@ -1,6 +1,6 @@
-# fly.toml app configuration file generated for tallyboard on 2026-10-29T09:54:53Z
+# fly.toml app configuration file generated for tallyboard on 2026-10-29T10:12:56Z
 #
-# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+# See https://docs.fly.io/reference/configuration for information about how to use this file.
 #
 
 app = 'tallyboard'
@@ -9,7 +9,7 @@ primary_region = 'sin'
 [build]
 
 [http_service]
-  internal_port = 8080
+  internal_port = 3000
   force_https = true
   auto_stop_machines = 'stop'
   auto_start_machines = true
