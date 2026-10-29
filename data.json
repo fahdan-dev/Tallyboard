@@ -1,0 +1,14 @@
+{
+  "users": [
+    {
+      "id": 1,
+      "username": "Superadmin",
+      "hash": "94b227820bc44ad605fa2b1bfcef7b27:92ad9dd2177f451f3e14e1957ff1a56ee72c4c4a89acfec8bdb284abc11ab517",
+      "role": "superadmin",
+      "active": true,
+      "created": 1792756553229
+    }
+  ],
+  "tasks": [],
+  "seq": 4
+}

@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tallyboard</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='9' fill='%2315302a'/%3E%3Cpath d='M10 9v22M17 9v22M24 9v22M31 9v22M5 27L35 13' stroke='%23e0a100' stroke-width='3.5' stroke-linecap='round' fill='none'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+</head><body><div id="app"></div>
+<script>
+const $=s=>document.querySelector(s), app=$('#app');
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const ini=n=>esc(String(n).charAt(0).toUpperCase());
+const isAdmin=u=>u.role==='admin'||u.role==='superadmin', isSuper=u=>u.role==='superadmin';
+const TALLY=`<svg class="tally" viewBox="0 0 280 90" aria-hidden="true">${[['M12 8V82',0],['M52 8V82',1],['M92 8V82',2],['M132 8V82',3],['M4 68L140 22',4],['M180 8V82',6],['M220 8V82',7],['M260 8V82',8]].map(([d,i])=>`<path pathLength="1" style="--i:${i}" d="${d}"/>`).join('')}</svg>`;
+const MARK='<svg viewBox="0 0 40 40" aria-hidden="true"><path d="M10 9v22M17 9v22M24 9v22M31 9v22M5 27L35 13"/></svg>';
+
+async function api(path,method='GET',data){
+  let r;
+  try{r=await fetch('/api/'+path,{method,headers:{'Content-Type':'application/json'},body:data?JSON.stringify(data):undefined})}
+  catch{throw new Error('Cannot reach the server. Run “node server.js”, then open http://localhost:3000 in your browser.')}
+  const j=await r.json().catch(()=>null);
+  if(!j) throw new Error('This page is not running through the Tallyboard server (HTTP '+r.status+'). Run “node server.js”, then open http://localhost:3000.');
+  if(!r.ok) throw new Error(j.error||'Something went wrong.'); return j;
+}
+function toast(t){const e=document.createElement('div');e.className='toast';e.setAttribute('role','status');e.textContent=t;document.body.append(e);setTimeout(()=>e.remove(),2400)}
+function modal(title,body,ok,run,danger){
+  const d=document.createElement('dialog');
+  d.innerHTML=`<form><h3>${title}</h3>${body}<div class="err" role="alert"></div><div class="acts end"><button type="button">Cancel</button><button class="${danger?'d':'p'}">${ok}</button></div></form>`;
+  document.body.append(d); const f=d.firstChild, e=d.querySelector('.err');
+  d.querySelector('[type=button]').onclick=()=>d.close(); d.onclose=()=>d.remove();
+  f.onsubmit=async ev=>{ev.preventDefault();const b=f.querySelector('.p,.d');b.disabled=true;
+    try{await run(Object.fromEntries(new FormData(f)));d.close()}catch(x){e.textContent=x.message;b.disabled=false}};
+  d.showModal(); const i=f.querySelector('input'); if(i) i.focus();
+}
+let me=null, view='tasks', flt='all';
+
+function loginView(mode='login'){
+  const reg=mode==='register';
+  app.innerHTML=`<div class="auth"><section class="hero">${TALLY}
+  <div><h1>Tallyboard</h1><p>Keep a running count of what you’ve finished.</p></div></section>
+  <section class="form"><h2>${reg?'Create your account':'Welcome back'}</h2>
+  <p class="mute" style="margin:0">${reg?'Pick a username and password to get started.':'Sign in to see your tasks.'}</p>
+  <label for="u">Username</label><input id="u" autocomplete="username">
+  <label for="p">Password</label><div class="pw"><input id="p" type="password" autocomplete="${reg?'new-password':'current-password'}"><button type="button" id="tg" aria-label="Show or hide password">Show</button></div>
+  <div class="err" role="alert" id="e"></div>
+  <div class="row"><button class="p" id="go">${reg?'Create account':'Sign in'}</button><button id="sw">${reg?'I have an account':'Create account'}</button></div>
+  </section></div>`;
+  const go=async()=>{
+    const b=$('#go'),label=b.textContent; if(b.disabled) return;
+    b.disabled=true; b.textContent='Please wait…'; $('#e').textContent='';
+    try{me=await api(reg?'register':'login','POST',{username:$('#u').value,password:$('#p').value});view='tasks';shell()}
+    catch(e){$('#e').textContent=e.message;b.disabled=false;b.textContent=label}
+  };
+  $('#go').onclick=go;
+  [$('#u'),$('#p')].forEach(i=>i.onkeydown=e=>{if(e.key==='Enter')go()});
+  $('#sw').onclick=()=>loginView(reg?'login':'register');
+  $('#tg').onclick=()=>{const p=$('#p'),show=p.type==='password';p.type=show?'text':'password';$('#tg').textContent=show?'Hide':'Show'};
+  $('#u').focus();
+}
+
+function shell(){
+  const tabs=[['tasks','My tasks']]; if(isAdmin(me)) tabs.push(['stats','Overview'],['users','Users']); tabs.push(['account','Account']);
+  app.innerHTML=`<header><div class="brand">${MARK}<h2>Tallyboard</h2></div>
+  <nav aria-label="Main">${tabs.map(([k,l])=>`<button data-v="${k}" class="${k===view?'on':''}"${k===view?' aria-current="page"':''}>${l}</button>`).join('')}</nav>
+  <div class="me"><span class="av">${ini(me.username)}</span><span>${esc(me.username)}</span>${isAdmin(me)?`<span class="tag ${me.role}">${me.role}</span>`:''}</div>
+  <button class="out" id="out">Sign out</button></header><main id="main"></main>`;
+  document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{view=b.dataset.v;shell()});
+  $('#out').onclick=async()=>{await api('logout','POST');me=null;view='tasks';loginView()};
+  Promise.resolve().then(()=>({tasks:tasksView,account:accountView,stats:statsView,users:usersView})[view]())
+    .catch(e=>{if(/Not signed in/.test(e.message)){me=null;loginView()}else $('#main').innerHTML=`<p class="err">${esc(e.message)}</p>`});
+}
+
+async function tasksView(){
+  const m=$('#main'), all=await api('tasks'), done=all.filter(t=>t.done).length, pct=all.length?Math.round(done/all.length*100):0;
+  const list=all.filter(t=>flt==='all'||(flt==='done')===t.done).reverse();
+  m.innerHTML=`<div class="top"><div><h1>My tasks</h1><p class="mute" style="margin:.25rem 0 0">${all.length?`${done} of ${all.length} done`:'Nothing here yet.'}</p></div></div>
+  <div class="card"><div class="add"><input id="nt" placeholder="What needs doing?" maxlength="140" aria-label="New task"><button class="p" id="add">Add task</button></div><div class="err" id="e"></div>
+  ${all.length?`<div class="bar" role="progressbar" aria-label="Tasks done" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><i style="width:${pct}%"></i></div>
+  <div class="chips">${[['all','All'],['open','Open'],['done','Done']].map(([k,l])=>`<button data-f="${k}" class="${k===flt?'on':''}">${l}</button>`).join('')}</div>`:''}
+  <div>${list.length?list.map(t=>`<div class="task ${t.done?'done':''}"><input type="checkbox" data-t="${t.id}" ${t.done?'checked':''} aria-label="Mark done"><span>${esc(t.title)}</span><small>${new Date(t.created).toLocaleDateString(undefined,{month:'short',day:'numeric'})}</small><button class="s g" data-x="${t.id}" aria-label="Delete task">Delete</button></div>`).join(''):`<div class="empty">${all.length?'No tasks in this view.':'Add your first task above.'}</div>`}</div></div>`;
+  const add=async()=>{try{await api('tasks','POST',{title:$('#nt').value});await tasksView();$('#nt').focus()}catch(e){$('#e').textContent=e.message}};
+  $('#add').onclick=add; $('#nt').onkeydown=e=>{if(e.key==='Enter')add()};
+  m.querySelectorAll('[data-f]').forEach(b=>b.onclick=()=>{flt=b.dataset.f;tasksView()});
+  m.querySelectorAll('[data-t]').forEach(c=>c.onchange=async()=>{await api('tasks/'+c.dataset.t,'PATCH',{done:c.checked});tasksView()});
+  m.querySelectorAll('[data-x]').forEach(b=>b.onclick=async()=>{await api('tasks/'+b.dataset.x,'DELETE');tasksView()});
+}
+
+function accountView(){
+  $('#main').innerHTML=`<div class="top"><h1>Account</h1></div>
+  <div class="two"><div class="card"><h3>Change username</h3>
+  <p class="mute" style="margin:.25rem 0 0">Signed in as ${esc(me.username)}. Member since ${new Date(me.created).toLocaleDateString(undefined,{month:'long',year:'numeric'})}.</p>
+  <label for="nu">New username</label><input id="nu" autocomplete="off" maxlength="20" placeholder="3-20 letters, numbers or _">
+  <div class="err" id="e1" role="alert"></div><button class="p" id="s1">Save username</button></div>
+  <div class="card"><h3>Change password</h3>
+  <p class="mute" style="margin:.25rem 0 0">Use at least 8 characters.</p>
+  <label for="c">Current password</label><input id="c" type="password" autocomplete="current-password">
+  <label for="n">New password</label><input id="n" type="password" autocomplete="new-password">
+  <div class="err" id="e" role="alert"></div><button class="p" id="s">Save password</button></div></div>`;
+  $('#nu').onkeydown=e=>{if(e.key==='Enter')$('#s1').click()};
+  $('#s1').onclick=async()=>{try{me=await api('username','POST',{username:$('#nu').value});shell();toast('Username changed')}catch(e){$('#e1').textContent=e.message}};
+  $('#s').onclick=async()=>{try{await api('password','POST',{current:$('#c').value,next:$('#n').value});toast('Password saved');$('#c').value=$('#n').value='';$('#e').textContent=''}catch(e){$('#e').textContent=e.message}};
+}
+
+async function statsView(){
+  const s=await api('admin/stats'), pct=s.tasks?Math.round(s.done/s.tasks*100):0;
+  $('#main').innerHTML=`<div class="top"><h1>Overview</h1></div><div class="stats">
+  ${[['Users',s.users],['Admins',s.admins],['Disabled',s.disabled],['Tasks',s.tasks]].map(([l,v])=>`<div class="stat"><b>${v}</b><small>${l}</small></div>`).join('')}
+  <div class="stat w"><b>${pct}%</b><small>of all tasks are done (${s.done} of ${s.tasks})</small><div class="bar"><i style="width:${pct}%"></i></div></div></div>`;
+}
+
+async function usersView(){
+  const us=await api('admin/users'), m=$('#main'), sup=isSuper(me);
+  m.innerHTML=`<div class="top"><h1>Users</h1><button class="p" id="new">Add user</button></div>
+  <div class="card tw"><table><thead><tr><th>User</th><th>Role</th><th>Status</th><th>Tasks</th><th></th></tr></thead><tbody>
+  ${us.map(u=>{const locked=u.role==='superadmin'||(u.role==='admin'&&!sup);
+  return `<tr><td><div class="u"><span class="av sm">${ini(u.username)}</span>${esc(u.username)}</div></td><td><span class="tag ${u.role}">${u.role}</span></td><td><span class="dot ${u.active?'':'off'}"></span>${u.active?'Active':'Disabled'}</td><td>${u.tasks}</td>
+  <td>${u.id===me.id?'<small class="mute">This is you</small>':locked?'<small class="mute">Superadmin only</small>':`<div class="acts">${sup?`<button class="s" data-a="role" data-i="${u.id}" data-r="${u.role}">Make ${u.role==='admin'?'user':'admin'}</button>`:''}<button class="s" data-a="act" data-i="${u.id}" data-v="${u.active}">${u.active?'Disable':'Enable'}</button><button class="s" data-a="pw" data-i="${u.id}" data-n="${esc(u.username)}">Reset password</button><button class="s d" data-a="del" data-i="${u.id}" data-n="${esc(u.username)}">Delete</button></div>`}</td></tr>`}).join('')}</tbody></table></div>`;
+  const run=async f=>{try{await f();usersView()}catch(e){toast(e.message)}};
+  $('#new').onclick=()=>modal('Add user','<label for="nu">Username</label><input id="nu" name="username" autocomplete="off"><label for="np">Password</label><input id="np" name="password" type="password" autocomplete="new-password"><label for="nr">Role</label><select id="nr" name="role"><option value="user">User</option>'+(sup?'<option value="admin">Admin</option>':'')+'</select>','Create user',async v=>{await api('admin/users','POST',v);toast('User created');usersView()});
+  m.querySelectorAll('[data-a]').forEach(b=>b.onclick=()=>{const a=b.dataset.a,u='admin/users/'+b.dataset.i,n=esc(b.dataset.n||'');
+    if(a==='role')run(()=>api(u,'PATCH',{role:b.dataset.r==='admin'?'user':'admin'}));
+    if(a==='act')run(()=>api(u,'PATCH',{active:b.dataset.v!=='true'}));
+    if(a==='pw')modal('Reset password for '+n,'<label for="rp">New password (8+ characters)</label><input id="rp" name="password" type="password" autocomplete="new-password">','Reset password',async v=>{await api(u,'PATCH',v);toast('Password reset')});
+    if(a==='del')modal('Delete '+n+'?','<p class="mute">This also deletes all of their tasks. It can’t be undone.</p>','Delete user',async()=>{await api(u,'DELETE');toast('User deleted');usersView()},true)});
+}
+
+api('me').then(u=>{me=u;shell()}).catch(()=>loginView());
+</script></body></html>
