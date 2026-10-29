@@ -14,7 +14,7 @@ const MARK='<svg viewBox="0 0 40 40" aria-hidden="true"><path d="M10 9v22M17 9v2
 
 async function api(path,method='GET',data){
   let r;
-  try{r=await fetch('/api/'+path,{method,headers:{'Content-Type':'application/json'},body:data?JSON.stringify(data):undefined})}
+  try{r=await fetch('/api/'+path,{method,credentials:'include',headers:{'Content-Type':'application/json'},body:data?JSON.stringify(data):undefined})}
   catch{throw new Error('Cannot reach the server. Run “node server.js”, then open http://localhost:3000 in your browser.')}
   const j=await r.json().catch(()=>null);
   if(!j) throw new Error('This page is not running through the Tallyboard server (HTTP '+r.status+'). Run “node server.js”, then open http://localhost:3000.');

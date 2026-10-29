@@ -48,7 +48,10 @@ setInterval(() => {
   for (const [k, v] of attempts) if (now - v.t > 6e5) attempts.delete(k);
 }, 10 * 60 * 1000).unref();
 
-const COOKIE_FLAGS = `HttpOnly; SameSite=Strict; Path=/; Max-Age=604800${SECURE ? '; Secure' : ''}`;
+const cookieHeader = (req, id) => {
+  const isHttps = req.socket.encrypted || req.headers['x-forwarded-proto'] === 'https';
+  return `sid=${id}; HttpOnly; SameSite=Lax; Path=/; Max-Age=604800${(SECURE && isHttps) ? '; Secure' : ''}`;
+};
 const SECURITY_HEADERS = {
   'X-Content-Type-Options': 'nosniff',
   'X-Frame-Options': 'DENY',
@@ -96,7 +99,7 @@ const handler = async (req, res) => {
     if (!u.active) { log('LOGIN_DISABLED', { username: u.username, ip }); return send(res, 403, { error: 'This account is disabled. Contact an admin.' }); }
     const id = createSession(u.id);
     log('LOGIN_OK', { username: u.username, ip });
-    return send(res, 200, pub(u), { 'Set-Cookie': `sid=${id}; ${COOKIE_FLAGS}` });
+    return send(res, 200, pub(u), { 'Set-Cookie': cookieHeader(req, id) });
   }
 
   if (p === '/api/register' && m === 'POST') {
@@ -110,7 +113,7 @@ const handler = async (req, res) => {
     const u = addUser(b.username, b.password); await save();
     const id = createSession(u.id);
     log('REGISTER', { username: u.username, ip });
-    return send(res, 200, pub(u), { 'Set-Cookie': `sid=${id}; ${COOKIE_FLAGS}` });
+    return send(res, 200, pub(u), { 'Set-Cookie': cookieHeader(req, id) });
   }
 
   if (p === '/api/logout') { sessions.delete(sid); return send(res, 200, {}, { 'Set-Cookie': 'sid=; Max-Age=0; Path=/' }); }
@@ -125,7 +128,7 @@ const handler = async (req, res) => {
     const id = createSession(user.id);
     await save();
     log('PASSWORD_CHANGE', { username: user.username });
-    return send(res, 200, {}, { 'Set-Cookie': `sid=${id}; ${COOKIE_FLAGS}` });
+    return send(res, 200, {}, { 'Set-Cookie': cookieHeader(req, id) });
   }
 
   if (p === '/api/username' && m === 'POST') {
